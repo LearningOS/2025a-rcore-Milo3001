@@ -24,7 +24,10 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
-const MAX_APP_NUM: usize = 256; // support max 256 tasks
+use crate::mm::VirtAddr;
+use crate::mm::MapPermission;
+
+use crate::config::MAX_APP_NUM;
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -49,7 +52,7 @@ struct TaskManagerInner {
     /// id of current `Running` task
     current_task: usize,
     /// syscall counts for each task
-    syscall_counts: [[usize; 512]; MAX_APP_NUM], // support max 16 tasks
+    syscall_counts: [[usize; 512]; MAX_APP_NUM],
 }
 
 lazy_static! {
@@ -172,6 +175,44 @@ impl TaskManager {
         let curtask = inner.current_task;
         inner.syscall_counts[curtask][syscall_id] += 1;
     }
+
+    fn task_memory_map(&self, start: usize, len: usize, prot: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let curtask = inner.current_task;
+        let task = &mut inner.tasks[curtask];
+        let memoryset = &mut task.memory_set;
+        let start_va: VirtAddr = (start as usize).into();
+        let end_va: VirtAddr = ((start + len) as usize).into();
+        if memoryset.is_conflict(start_va, end_va) {
+            return -1;
+        }
+        let mut map_perm = MapPermission::U;
+        if prot & 1 != 0 {
+            map_perm |= MapPermission::R;
+        }
+        if prot & 2 != 0 {
+            map_perm |= MapPermission::W;
+        }
+        if prot & 4 != 0 {
+            map_perm |= MapPermission::X;
+        }
+        memoryset.insert_framed_area(start_va, end_va, map_perm);
+        0
+    }
+
+    fn task_memory_unmap(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let curtask = inner.current_task;
+        let task = &mut inner.tasks[curtask];
+        let memoryset = &mut task.memory_set;
+        let start_va: VirtAddr = (start as usize).into();
+        let end_va: VirtAddr = ((start + len) as usize).into();
+        if !memoryset.is_mapped(start_va, end_va) {
+            return -1;
+        }
+        memoryset.remove_area(start_va, end_va);
+        0
+    }
 }
 
 /// Run the first task in task list.
@@ -230,4 +271,14 @@ pub fn count_syscall(syscall_id: usize) -> usize {
 /// Increment the syscall count for a given `syscall_id`.
 pub fn increment_syscall_count(syscall_id: usize) {
     TASK_MANAGER.increment_syscall_count(syscall_id);
+}
+
+/// Map memory to current task
+pub fn task_memory_map(start: usize, len: usize, prot: usize) -> isize {
+    TASK_MANAGER.task_memory_map(start, len, prot)
+}
+
+/// Unmap memory from current task
+pub fn task_memory_unmap(start: usize, len: usize) -> isize {
+    TASK_MANAGER.task_memory_unmap(start, len)
 }

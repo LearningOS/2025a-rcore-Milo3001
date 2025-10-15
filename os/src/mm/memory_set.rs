@@ -51,6 +51,32 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+    /// check if the area [start_va, end_va) conflicts with existing areas
+    pub fn is_conflict(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let new_start_vpn: VirtPageNum = start_va.floor();
+        let new_end_vpn: VirtPageNum = end_va.ceil();
+        for area in &self.areas {
+            let area_start_vpn = area.vpn_range.get_start();
+            let area_end_vpn = area.vpn_range.get_end();
+            if !(new_end_vpn <= area_start_vpn || new_start_vpn >= area_end_vpn) {
+                return true;
+            }
+        }
+        false
+    }
+    /// check if the area [start_va, end_va) is already mapped
+    pub fn is_mapped(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let check_start_vpn: VirtPageNum = start_va.floor();
+        let check_end_vpn: VirtPageNum = end_va.ceil();
+        for area in &self.areas {
+            let area_start_vpn = area.vpn_range.get_start();
+            let area_end_vpn = area.vpn_range.get_end();
+            if area_start_vpn == check_start_vpn && area_end_vpn == check_end_vpn {
+                return true;
+            }
+        }
+        false
+    }
     /// Assume that no conflicts.
     pub fn insert_framed_area(
         &mut self,
@@ -62,6 +88,18 @@ impl MemorySet {
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
         );
+    }
+    /// Assume that the area [start_va, end_va) is already mapped
+    pub fn remove_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) {
+        if let Some(pos) = self
+            .areas
+            .iter()
+            .position(|area| area.vpn_range.get_start() == start_va.floor()
+                && area.vpn_range.get_end() == end_va.ceil())
+        {
+            let mut area = self.areas.remove(pos);
+            area.unmap(&mut self.page_table);
+        }
     }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);

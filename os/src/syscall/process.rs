@@ -1,5 +1,6 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+use crate::config::PAGE_SIZE;
+use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, task_memory_map, task_memory_unmap};
 use crate::timer::get_time_us;
 
 #[repr(C)]
@@ -53,42 +54,68 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
+use crate::mm::PageTable;
+use crate::mm::VirtAddr;
+
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
     match _trace_request {
-        // 0 => {
-        //     // read
-        //     let buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
-        //     buffer[0][0] as isize
-        // }
-        // 1 => {
-        //     // write
-        //     let val = _data as u8;
-        //     let mut buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
-        //     buffer[0][0] = val;
-        //     0
-        // }
-        // 2 => {
-        //     // count
-        //     let count = crate::task::count_syscall(_id);
-        //     count as isize
-        // }
+        0 => {
+            // read
+            let page_table = PageTable::from_token(current_user_token());
+            let vpn = VirtAddr::from(_id).floor();
+            let pte = page_table.translate(vpn);
+            if pte.is_none() || !pte.unwrap().is_user() || !pte.unwrap().is_valid() || !pte.unwrap().readable() {
+                -1
+            } else {
+                let ppn = pte.unwrap().ppn();
+                let val = ppn.get_bytes_array()[VirtAddr::from(_id).page_offset()];
+                val as isize
+            }
+        }
+        1 => {
+            // write
+            let page_table = PageTable::from_token(current_user_token());
+            let vpn = VirtAddr::from(_id).floor();
+            let pte = page_table.translate(vpn);
+            if pte.is_none() || !pte.unwrap().is_user() || !pte.unwrap().is_valid() || !pte.unwrap().writable() {
+                -1
+            } else {
+                let ppn = pte.unwrap().ppn();
+                ppn.get_bytes_array()[VirtAddr::from(_id).page_offset()] = _data as u8;
+                0
+            }
+        }
+        2 => {
+            // count
+            let count = crate::task::count_syscall(_id);
+            count as isize
+        }
         _ => -1
     }
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
+    trace!("kernel: sys_mmap");
+    if start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    if prot & !0x7 != 0 || prot & 0x7 == 0 {
+        return -1;
+    }
+    task_memory_map(start, len, prot)
 }
 
 // YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    if start % PAGE_SIZE != 0 {
+        return -1;
+    }
+    task_memory_unmap(start, len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
