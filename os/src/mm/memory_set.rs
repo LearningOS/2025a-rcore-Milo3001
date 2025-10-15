@@ -35,8 +35,8 @@ lazy_static! {
 }
 /// address space
 pub struct MemorySet {
-    page_table: PageTable,
-    areas: Vec<MapArea>,
+    page_table: PageTable,   // 页表页
+    areas: Vec<MapArea>,     // 数据页
 }
 
 impl MemorySet {
@@ -131,7 +131,7 @@ impl MemorySet {
             ),
             None,
         );
-        info!("mapping physical memory");
+        info!("mapping physical memory");  // 用于使用物理页号访问页表页
         memory_set.push(
             MapArea::new(
                 (ekernel as usize).into(),
@@ -226,7 +226,7 @@ impl MemorySet {
         let satp = self.page_table.token();
         unsafe {
             satp::write(satp);
-            asm!("sfence.vma");
+            asm!("sfence.vma");   // 刷新TLB
         }
     }
     /// Translate a virtual page number to a page table entry
