@@ -24,6 +24,8 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
+const MAX_APP_NUM: usize = 256; // support max 256 tasks
+
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -46,6 +48,8 @@ struct TaskManagerInner {
     tasks: Vec<TaskControlBlock>,
     /// id of current `Running` task
     current_task: usize,
+    /// syscall counts for each task
+    syscall_counts: [[usize; 512]; MAX_APP_NUM], // support max 16 tasks
 }
 
 lazy_static! {
@@ -64,6 +68,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_counts: [[0; 512]; MAX_APP_NUM],
                 })
             },
         }
@@ -153,6 +158,20 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Count the number of times a syscall with `syscall_id` has been called.
+    fn count_syscall(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let curtask = inner.current_task;
+        inner.syscall_counts[curtask][syscall_id]
+    }
+
+    /// Increment the syscall count for a given `syscall_id`.
+    fn increment_syscall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let curtask = inner.current_task;
+        inner.syscall_counts[curtask][syscall_id] += 1;
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +220,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Count the number of times a syscall with `syscall_id` has been called.
+pub fn count_syscall(syscall_id: usize) -> usize {
+    TASK_MANAGER.count_syscall(syscall_id)
+}
+
+/// Increment the syscall count for a given `syscall_id`.
+pub fn increment_syscall_count(syscall_id: usize) {
+    TASK_MANAGER.increment_syscall_count(syscall_id);
 }

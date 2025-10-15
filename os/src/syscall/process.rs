@@ -52,28 +52,29 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     }
     0
 }
+
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
     match _trace_request {
-        0 => {
-            // read
-            let buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
-            buffer[0][0] as isize
-        }
-        1 => {
-            // write
-            let val = _data as u8;
-            let buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
-            buffer[0][0] = val;
-            0
-        }
-        2 => {
-            // count
-            let count = crate::task::count_syscall(_id);
-            count as isize
-        }
+        // 0 => {
+        //     // read
+        //     let buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
+        //     buffer[0][0] as isize
+        // }
+        // 1 => {
+        //     // write
+        //     let val = _data as u8;
+        //     let mut buffer = translated_byte_buffer(current_user_token(), _id as *const u8, 1);
+        //     buffer[0][0] = val;
+        //     0
+        // }
+        // 2 => {
+        //     // count
+        //     let count = crate::task::count_syscall(_id);
+        //     count as isize
+        // }
         _ => -1
     }
 }
